@@ -1,3 +1,5 @@
+;Brandon Stock, Dillon Stenberg, and Bailey Denzer
+
 (ns BakersClojure.main
 (:require [clojure.core.async
              :as async
@@ -8,7 +10,6 @@
   [id n fib-of-n server])
 
 (defn make-customer [id]
-  (println "Got a customer")
   (let [n (+ 30 (rand-int 10))
         customer (->Customer id n (atom nil) (atom nil))]
     (add-watch (:fib-of-n customer) id
@@ -16,21 +17,31 @@
                  (println (str "Customer " key " changed from " old-value " to " new-value "."))))
     customer))
 
+(defn put-customer [customer customers]
+  (Thread/sleep (rand-int 100))
+  (>!! customers (make-customer customer)))
+
+(defn put-customers [num-customers customers]
+  (doseq [customer-id (range num-customers)]
+    (put-customer customer-id customers))
+  (close! customers))
+
+
 (defn make-customers [num-customers]
-    (println "customers")
-    (async/map make-customer (range num-customers)))
+    (let [customers (chan)]
+        (future (put-customers num-customers customers))
+      customers))
 
 (defn set-fib-value
   [customer value]
   (reset! (:fib-of-n customer) value))
 
-(defn fib
-  ([n]
-     (fib [0 1] n))
-  ([x, n]
-     (if (< (count x) n)
-       (fib (conj x (+ (last x) (nth x (- (count x) 2)))) n)
-       x)))
+(defn fib [n]
+  (case n
+    0 0
+    1 1
+    (+ (fib (- n 1))
+       (fib (- n 2)))))
 
 (defrecord Server
   [id customers-served])
@@ -43,14 +54,21 @@
     server))
 
 (defn make-servers [num-servers]
-  (println "servers")
-  (make-server num-servers))
+  (let [servers (chan)]
+   (doseq [server-id (range num-servers)]
+           (go (>! servers (make-server server-id))))
+    servers))
 
-(defn serve [server customer num-servers]
-  (println "Your mom"))
 
 (defn add-served-customer [server customer-id n]
   (swap! (:customers-served server) conj {:customer-id customer-id, :n n}))
+
+(defn serve [server customer server-channel]
+  (let [result (fib (:n customer))]
+    (set-fib-value customer result)
+    (add-served-customer server (:id customer) (:n customer))
+    (go (>! server-channel server))
+    result))
 
 
 (defn manage-bakery
@@ -70,5 +88,6 @@
         (recur)))))
 
 
+
 (defn -main []
-  (manage-bakery 100 2000))
+  (manage-bakery 20 200))
